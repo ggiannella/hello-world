@@ -66,13 +66,12 @@ jobs:
               throw new Error('Expected exactly one QE plan marker.');
             }
 
-            // Assumes the associated CENA key is included in the PR title.
             const issueKeys = [...new Set(
-              pr.title.match(/\bCENA-[1-9]\d*\b/g) || []
+              pr.title.match(/\bETMS-[1-9]\d*\b/g) || []
             )];
 
             if (issueKeys.length !== 1) {
-              throw new Error('PR title must contain exactly one CENA ticket key.');
+              throw new Error('PR title must contain exactly one ETMS ticket key.');
             }
 
             const issueKey = issueKeys[0];
