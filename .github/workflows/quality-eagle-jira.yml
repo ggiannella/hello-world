@@ -1,0 +1,104 @@
+name: Send Quality Eagle checklist to Jira
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: qe-jira-${{ github.repository }}-${{ github.event.comment.id }}
+  cancel-in-progress: false
+
+jobs:
+  forward-checklist:
+    if: >-
+      github.repository == vars.QE_APPROVED_REPOSITORY &&
+      github.event.issue.pull_request &&
+      format('{0}', github.event.comment.user.id) == vars.QE_GITHUB_USER_ID &&
+      contains(github.event.comment.body, '<!-- qe-plan:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Forward current checklist
+        uses: actions/github-script@v9
+        env:
+          JIRA_AUTOMATION_URL: ${{ secrets.JIRA_AUTOMATION_URL }}
+          JIRA_AUTOMATION_TOKEN: ${{ secrets.JIRA_AUTOMATION_TOKEN }}
+          QE_GITHUB_USER_ID: ${{ vars.QE_GITHUB_USER_ID }}
+        with:
+          script: |
+            const url = process.env.JIRA_AUTOMATION_URL;
+            const token = process.env.JIRA_AUTOMATION_TOKEN;
+
+            if (!url || !token) {
+              throw new Error('Missing Jira automation URL or token.');
+            }
+
+            // Read current state rather than forwarding an older event snapshot.
+            const [commentResult, prResult] = await Promise.all([
+              github.rest.issues.getComment({
+                ...context.repo,
+                comment_id: context.payload.comment.id
+              }),
+              github.rest.pulls.get({
+                ...context.repo,
+                pull_number: context.payload.issue.number
+              })
+            ]);
+
+            const comment = commentResult.data;
+            const pr = prResult.data;
+            const body = comment.body || '';
+
+            if (String(comment.user.id) !== process.env.QE_GITHUB_USER_ID) {
+              throw new Error('Unexpected checklist comment author.');
+            }
+
+            const planMarkers = [...body.matchAll(
+              /^<!-- qe-plan:([0-9a-f-]{36}) -->\r?$/gim
+            )];
+
+            if (planMarkers.length !== 1) {
+              throw new Error('Expected exactly one QE plan marker.');
+            }
+
+            const issueKeys = [...new Set(
+              pr.title.match(/\bETMS-[1-9]\d*\b/g) || []
+            )];
+
+            if (issueKeys.length !== 1) {
+              throw new Error('PR title must contain exactly one ETMS ticket key.');
+            }
+
+            const issueKey = issueKeys[0];
+            const payload = {
+              issues: [issueKey],
+              data: {
+                repository: `${context.repo.owner}/${context.repo.repo}`,
+                issueKey,
+                checklistId: `pr-${pr.number}-comment-${comment.id}`,
+                sourceUpdatedAt: comment.updated_at,
+                checklistBody: body
+              }
+            };
+
+            const response = await fetch(url, {
+              method: 'POST',
+              redirect: 'error',
+              signal: AbortSignal.timeout(30000),
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Automation-Webhook-Token': token
+              },
+              body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+              throw new Error(`Jira webhook returned HTTP ${response.status}.`);
+            }
+
+            core.info(`Jira webhook accepted checklist for ${issueKey}.`);
