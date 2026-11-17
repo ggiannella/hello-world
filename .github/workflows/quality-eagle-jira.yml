@@ -173,7 +173,7 @@ jobs:
                 issueKey,
                 checklistId: `pr-${pr.number}-comment-${comment.id}`,
                 sourceUpdatedAt: comment.updated_at,
-                checklistBody: body,
+                checklistBody: body.replace(/^- \[ \] /gm, '- [] '),
                 // ADF object for a Jira-side writer; the text comment action cannot render it.
                 checklistAdf: checklistToAdf(body, planMarkers[0][1])
               }
