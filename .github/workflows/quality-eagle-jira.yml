@@ -138,14 +138,11 @@ jobs:
 
             const issueKey = issueKeys[0];
             const payload = {
-              issues: [issueKey],
-              data: {
-                repository: `${context.repo.owner}/${context.repo.repo}`,
-                issueKey,
-                checklistId: `pr-${pr.number}-comment-${comment.id}`,
-                sourceUpdatedAt: comment.updated_at,
-                checklistBody: checklistToSmartMarkdown(body)
-              }
+              repository: `${context.repo.owner}/${context.repo.repo}`,
+              issueKey,
+              checklistId: `pr-${pr.number}-comment-${comment.id}`,
+              sourceUpdatedAt: comment.updated_at,
+              checklistBody: checklistToSmartMarkdown(body)
             };
 
             const response = await fetch(url, {
